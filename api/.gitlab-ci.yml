@@ -1,0 +1,55 @@
+stages:
+ - build_server
+ - package_server
+ - deploy_server
+
+build_server:
+  stage: build_server
+  image: composer
+  script:
+    - composer install --ignore-platform-reqs
+  cache:
+    paths:
+      - vendor
+  artifacts:
+    paths:
+      - vendor
+  tags:
+    - grooo-docker
+  only:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /\[deploy-stg\]/
+
+
+package_server:
+  stage: package_server
+  script:
+    - chmod 777 -R storage
+    - cp $API_ENV .env
+    - cd .docker/nginx && cat Dockerfile_ext >> Dockerfile
+    - cd $CI_PROJECT_DIR
+    - docker build -f .docker/nginx/Dockerfile -t grooo/ipp-api .
+    - export IMAGE="684824300297.dkr.ecr.ap-southeast-1.amazonaws.com/grooo/ipp-api:latest"
+    - docker tag grooo/ipp-api:latest $IMAGE
+    - docker push $IMAGE
+    - docker image prune -f
+  cache:
+    paths:
+      - ./vendor
+  tags:
+    - grooo-shell
+  only:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /\[deploy-stg\]/
+
+deploy_server:
+  stage: deploy_server
+  script:
+    - cat .docker/deploy-stg.sh | ssh -o StrictHostKeyChecking=no -i ~/.ssh/grooo-build-dev.pem ec2-user@$SERVER_DEV_IP
+  tags:
+    - grooo-shell
+  only:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /\[deploy-stg\]/
+
+
